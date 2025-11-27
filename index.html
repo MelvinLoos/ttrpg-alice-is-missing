@@ -175,8 +175,8 @@
                     <span v-else-if="isGamePaused" class="text-[9px] text-yellow-500 uppercase font-bold tracking-wider">PAUSED</span>
                 </div>
                 
-                <button @click="showProfileModal = true" class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white">
-                    <i class="fas fa-user-cog text-xs"></i>
+                <button @click="showSettingsModal = true" class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white" title="Settings">
+                    <i class="fas fa-cog text-xs"></i>
                 </button>
             </div>
         </header>
@@ -299,17 +299,31 @@
             </main>
         </div>
 
-        <!-- PROFILE MODAL -->
-        <div v-if="showProfileModal" class="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-                <h3 class="text-white font-bold text-lg mb-4">Identity Settings</h3>
-                <div class="mb-4">
-                    <label class="text-xs text-slate-500 uppercase font-bold">Current Display Name</label>
+        <!-- SETTINGS MODAL -->
+        <div v-if="showSettingsModal" class="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-6">
+                <h3 class="text-white font-bold text-xl">Settings</h3>
+                
+                <!-- Identity -->
+                <div>
+                    <h4 class="text-xs text-slate-500 uppercase font-bold mb-2">My Identity</h4>
+                    <label class="text-[10px] text-slate-400 uppercase font-bold">Display Name</label>
                     <input v-model="tempDisplayName" type="text" class="w-full mt-1 bg-slate-950 border border-slate-700 rounded p-2 text-white">
+                    <p class="text-[10px] text-slate-500 mt-1">Change this when a card prompts you (e.g. "Unknown Number").</p>
                 </div>
-                <div class="flex justify-end gap-3">
-                    <button @click="showProfileModal = false" class="text-slate-400 hover:text-white text-sm px-3">Cancel</button>
-                    <button @click="updateProfile" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-500">Save Changes</button>
+
+                <!-- Danger Zone -->
+                <div class="pt-4 border-t border-slate-800">
+                    <h4 class="text-xs text-red-500 uppercase font-bold mb-2">Danger Zone</h4>
+                    <button @click="resetSession" class="w-full border border-red-900/50 bg-red-900/20 text-red-400 hover:bg-red-900/40 p-3 rounded text-sm font-bold transition flex items-center justify-center gap-2">
+                        <i class="fas fa-trash-alt"></i> Reset Session
+                    </button>
+                    <p class="text-[10px] text-slate-600 mt-2 text-center">Deletes all messages and resets the timer for everyone.</p>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button @click="showSettingsModal = false" class="text-slate-400 hover:text-white text-sm px-3 font-bold">Close</button>
+                    <button @click="updateProfile" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-500 shadow-lg shadow-blue-900/30">Save Name</button>
                 </div>
             </div>
         </div>
@@ -372,7 +386,7 @@
             const view = ref('setup'), isLoading = ref(false), errorMsg = ref(''), config = ref({ url: localStorage.getItem('alice_sb_url') || '', key: localStorage.getItem('alice_sb_key') || '' });
             const form = ref({ roomCode: '', character: '' }), currentUser = ref(null), currentRoom = ref(null), allPlayers = ref([]);
             const messages = ref([]); // Initialize as array, not ref([])
-            const newMessage = ref(''), showProfileModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
+            const newMessage = ref(''), showSettingsModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
             const activeMilestone = ref(null), alertedMilestones = ref(new Set()), lastXCardTime = ref(null), unreadCounts = ref({ group: 0 });
             const supabase = ref(null), bottomMarker = ref(null);
             const timerDisplay = ref('90:00'), isGameStarted = ref(false), isTimeLow = ref(false);
@@ -436,6 +450,13 @@
                 scrollToBottom();
 
                 const channel = supabase.value.channel(`game:${currentRoom.value.id}`)
+                    // LISTEN FOR DELETE EVENTS (Reset Session)
+                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
+                        // Optimistically clear everything if we detect a delete.
+                        // Since Reset deletes ALL, we can just wipe the array or filter.
+                        // payload.old.id is available.
+                        messages.value = messages.value.filter(m => m.id !== payload.old.id);
+                    })
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
                         const newMsg = processIncomingMessage(payload.new);
                         messages.value.push(newMsg);
@@ -482,71 +503,61 @@
                 await supabase.value.from('messages').insert(payload); AudioEngine.playTone('outgoing');
             };
 
-            // Trigger X-Card -> ALSO PAUSE
             const triggerXCard = async () => {
                 if(!confirm("Tap the X-Card? This will alert everyone to pause.")) return;
-                
-                // 1. Send Alert
                 await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'ANONYMOUS', content: 'THE X-CARD HAS BEEN TAPPED.', type: 'x_card' });
-                
-                // 2. Auto-Pause (if not already paused)
-                if (!isGamePaused.value) {
-                    await togglePause(true); // Force pause = true, silent param
-                }
+                if (!isGamePaused.value) { await togglePause(true); }
             };
 
             const togglePause = async (arg) => {
-                if (!currentRoom.value.game_start_time) return; // Can't pause if not started
-                
-                // Fix: @click passes an Event object, which is truthy. 
-                // We must ensure forcePause is actually a boolean, otherwise default to false.
+                if (!currentRoom.value.game_start_time) return;
                 const forcePause = typeof arg === 'boolean' ? arg : false;
-                
                 const now = new Date();
                 
                 if (isGamePaused.value && !forcePause) {
-                    // RESUME LOGIC
                     const pausedAt = new Date(currentRoom.value.paused_at);
                     const diff = now.getTime() - pausedAt.getTime();
                     const oldStart = new Date(currentRoom.value.game_start_time);
                     const newStart = new Date(oldStart.getTime() + diff);
 
-                    // OPTIMISTIC LOCAL UPDATE (Create new object reference to ensure reactivity)
-                    const updatedRoom = {
-                        ...currentRoom.value,
-                        paused_at: null,
-                        game_start_time: newStart.toISOString()
-                    };
+                    // Optimistic update
+                    const updatedRoom = { ...currentRoom.value, paused_at: null, game_start_time: newStart.toISOString() };
                     currentRoom.value = updatedRoom;
 
-                    await supabase.value.from('rooms').update({ 
-                        paused_at: null, 
-                        game_start_time: newStart.toISOString() 
-                    }).eq('id', currentRoom.value.id);
-                    
-                    // Announce Resume
+                    await supabase.value.from('rooms').update({ paused_at: null, game_start_time: newStart.toISOString() }).eq('id', currentRoom.value.id);
                     await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'Game Resumed.', type: 'system' });
-
                 } else {
-                    // PAUSE LOGIC
-                    // OPTIMISTIC LOCAL UPDATE
-                    const updatedRoom = {
-                        ...currentRoom.value,
-                        paused_at: now.toISOString()
-                    };
+                    const updatedRoom = { ...currentRoom.value, paused_at: now.toISOString() };
                     currentRoom.value = updatedRoom;
 
                     await supabase.value.from('rooms').update({ paused_at: now.toISOString() }).eq('id', currentRoom.value.id);
-                    
-                    // Announce Pause
                     await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'Game Paused.', type: 'system' });
                 }
+            };
+
+            const resetSession = async () => {
+                if(!confirm("DANGER: This will delete ALL messages and reset the timer for EVERYONE in the room. Are you sure?")) return;
+                
+                showSettingsModal.value = false;
+                
+                // 1. Delete Messages
+                await supabase.value.from('messages').delete().eq('room_id', currentRoom.value.id);
+                
+                // 2. Reset Room Timer
+                const updatedRoom = { ...currentRoom.value, game_start_time: null, paused_at: null };
+                currentRoom.value = updatedRoom;
+                await supabase.value.from('rooms').update({ game_start_time: null, paused_at: null }).eq('id', currentRoom.value.id);
+                
+                // 3. Clear Local
+                messages.value = [];
+                isGameStarted.value = false;
+                alertedMilestones.value.clear();
             };
 
             const updateProfile = async () => {
                 if(!tempDisplayName.value.trim()) return;
                 await supabase.value.from('players').update({ display_name: tempDisplayName.value }).eq('id', currentUser.value.id);
-                currentUser.value.display_name = tempDisplayName.value; showProfileModal.value = false;
+                currentUser.value.display_name = tempDisplayName.value; showSettingsModal.value = false;
             };
 
             const toggleTimerStart = async () => {
@@ -559,9 +570,12 @@
             const syncTimer = () => { if (currentRoom.value && currentRoom.value.game_start_time) isGameStarted.value = true; updateTimerDisplay(); };
 
             const updateTimerDisplay = () => {
-                if (!currentRoom.value || !currentRoom.value.game_start_time) { timerDisplay.value = "90:00"; return; }
+                if (!currentRoom.value || !currentRoom.value.game_start_time) { 
+                    timerDisplay.value = "90:00"; 
+                    isGameStarted.value = false; // Ensure UI reflects reset state
+                    return; 
+                }
                 
-                // If paused, calculate from PAUSE TIME, not NOW
                 const endPoint = isGamePaused.value ? new Date(currentRoom.value.paused_at) : new Date();
                 const start = new Date(currentRoom.value.game_start_time).getTime();
                 const now = endPoint.getTime();
@@ -570,7 +584,6 @@
 
                 if (remaining <= 0) { timerDisplay.value = "00:00"; isTimeLow.value = true; return; }
 
-                // Milestones (Only trigger if RUNNING)
                 if (!isGamePaused.value) {
                     const mins = Math.ceil(remaining / 60000);
                     if (MILESTONES.includes(mins) && !alertedMilestones.value.has(mins)) {
@@ -589,9 +602,9 @@
 
             return {
                 view, config, form, CHAR_COLORS, currentUser, currentRoom, otherPlayers, filteredMessages, unreadCounts, selectableCharacters,
-                newMessage, showProfileModal, tempDisplayName, isSidebarOpen, activeThread, timerDisplay, isGameStarted, isTimeLow, activeMilestone, lastXCardTime, isLoading, errorMsg, bottomMarker,
+                newMessage, showSettingsModal, tempDisplayName, isSidebarOpen, activeThread, timerDisplay, isGameStarted, isTimeLow, activeMilestone, lastXCardTime, isLoading, errorMsg, bottomMarker,
                 handleGameAction, sendMessage, triggerXCard, updateProfile, toggleTimerStart, switchThread, getPlayerColor, formatTime, saveConfig,
-                togglePause, isGamePaused
+                togglePause, isGamePaused, resetSession
             };
         }
     }).mount('#app');
