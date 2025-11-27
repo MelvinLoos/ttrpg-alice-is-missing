@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Vue Dev Server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}",
+    //   "serverReadyAction": {
+    //     "pattern": "ready in",
+    //     "action": "debugWithChrome"
+    //   }
+    },
+    {
+      "name": "Launch Vivaldi",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "runtimeExecutable": "/opt/vivaldi/vivaldi"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run & Launch Vivaldi",
+      "configurations": [
+        "Run Vue Dev Server",
+        // "Launch Vivaldi"
+      ]
+    }
+  ]
+}

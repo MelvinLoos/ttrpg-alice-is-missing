@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice is Missing</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            background-color: #0f172a; 
+            color: #e2e8f0; 
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+        /* Animations */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        
+        .pulse-red { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red {
+            0% { text-shadow: 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { text-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+            100% { text-shadow: 0 0 0 rgba(239, 68, 68, 0.4); }
+        }
+
+        .x-card-flash { animation: flash-bg 1s ease-in-out infinite alternate; }
+        @keyframes flash-bg {
+            from { background-color: #450a0a; }
+            to { background-color: #7f1d1d; }
+        }
+
+        /* Message Bubbles */
+        .bubble-tip { position: relative; }
+        .bubble-tip::after {
+            content: ''; position: absolute; bottom: 0; width: 0; height: 0;
+            border: 10px solid transparent; border-bottom-color: inherit;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app" class="h-screen w-full flex flex-col overflow-hidden bg-slate-950 relative">
+
+    <!-- ================= SCENE 1: SETUP (API KEYS) ================= -->
+    <div v-if="view === 'setup'" class="flex-1 flex flex-col justify-center items-center p-6 space-y-8 max-w-md mx-auto w-full">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-slate-100 tracking-widest">SYSTEM SETUP</h1>
+            <p class="text-slate-500 text-sm mt-2">Connect to the Silent Falls Network</p>
+        </div>
+        
+        <div class="w-full space-y-4">
+            <div>
+                <label class="text-xs uppercase font-bold text-slate-500 tracking-wider">Supabase URL</label>
+                <input v-model="config.url" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition mt-1">
+            </div>
+
+            <div>
+                <label class="text-xs uppercase font-bold text-slate-500 tracking-wider">Supabase Anon Key</label>
+                <input v-model="config.key" type="password" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition mt-1">
+            </div>
+
+            <button @click="saveConfig" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg shadow-lg shadow-blue-900/40 transition transform active:scale-95">
+                ESTABLISH CONNECTION
+            </button>
+        </div>
+        <p v-if="errorMsg" class="text-red-400 text-center text-sm">{{ errorMsg }}</p>
+    </div>
+
+    <!-- ================= SCENE 2: LOBBY ================= -->
+    <div v-else-if="view === 'lobby'" class="flex-1 flex flex-col justify-center items-center p-6 space-y-8 max-w-md mx-auto w-full">
+        <div class="text-center space-y-2">
+            <h1 class="text-5xl font-black text-white tracking-tighter">ALICE IS <span class="text-red-600">MISSING</span></h1>
+            <p class="text-slate-500 font-mono text-xs tracking-widest uppercase">Secure Messaging Terminal</p>
+        </div>
+
+        <div class="w-full space-y-4 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <!-- Room Code -->
+            <div>
+                <label class="text-xs uppercase font-bold text-slate-500">Access Code</label>
+                <input v-model="form.roomCode" @input="form.roomCode = form.roomCode.toUpperCase()" type="text" placeholder="CODE" class="w-full bg-slate-950 border border-slate-700 rounded p-4 text-center text-3xl tracking-[0.5em] font-mono uppercase text-white focus:border-red-600 outline-none transition">
+            </div>
+
+            <!-- Character Select -->
+            <div>
+                <label class="text-xs uppercase font-bold text-slate-500">Identity</label>
+                <div class="grid grid-cols-1 gap-2 mt-2">
+                    <button 
+                        v-for="name in selectableCharacters" 
+                        :key="name"
+                        @click="form.character = name"
+                        :class="[
+                            'p-3 rounded-lg border text-left transition flex items-center justify-between group',
+                            form.character === name ? 'border-white bg-slate-800' : 'border-slate-800 bg-slate-950 hover:border-slate-600'
+                        ]"
+                    >
+                        <span class="font-bold" :style="{ color: CHAR_COLORS[name] }">{{ name }}</span>
+                        <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: CHAR_COLORS[name] }"></div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-3 pt-4">
+                <button @click="handleGameAction('join')" :disabled="isLoading" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-lg transition border border-slate-700">
+                    JOIN
+                </button>
+                <button @click="handleGameAction('create')" :disabled="isLoading" class="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition shadow-lg shadow-red-900/40">
+                    CREATE
+                </button>
+            </div>
+        </div>
+        <p v-if="errorMsg" class="text-red-400 text-center text-sm bg-red-950/50 p-2 rounded border border-red-900 w-full">{{ errorMsg }}</p>
+    </div>
+
+    <!-- ================= SCENE 3: GAME INTERFACE ================= -->
+    <div v-else-if="view === 'game'" class="flex-1 flex flex-col relative h-full">
+        
+        <!-- HEADER -->
+        <header class="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 z-20 shadow-md shrink-0 relative">
+            
+            <!-- IDENTITY TAG (Center Top Overlay) -->
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-950 border-x border-b border-slate-800 rounded-b-md px-4 py-0.5 shadow-lg z-30 pointer-events-none flex items-center gap-2">
+                <span class="text-[8px] text-slate-500 font-mono uppercase tracking-widest">ID:</span>
+                <span class="text-[10px] font-bold tracking-wider uppercase" :style="{ color: getPlayerColor(currentUser.character_name) }">
+                    {{ currentUser.character_name }}
+                </span>
+            </div>
+
+            <!-- Back Button (only in DM on mobile) -->
+            <button v-if="activeThread.id" @click="isSidebarOpen = !isSidebarOpen" class="md:hidden text-slate-400 hover:text-white mr-2">
+                <i class="fas fa-chevron-left text-lg"></i>
+            </button>
+            
+            <!-- Thread Title -->
+            <div class="flex-1 flex flex-col justify-center overflow-hidden" @click="isSidebarOpen = !isSidebarOpen">
+                <div class="flex items-center gap-2 pt-1">
+                    <h2 class="font-bold text-lg truncate text-white">{{ activeThread.name }}</h2>
+                    <span v-if="!activeThread.id" class="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">ALL</span>
+                </div>
+                <span class="text-[10px] text-slate-500 font-mono tracking-wide uppercase truncate">
+                    {{ activeThread.id ? 'Private Line' : 'Encrypted Group Channel' }}
+                </span>
+            </div>
+
+            <!-- Timer & Menu -->
+            <div class="flex items-center gap-3">
+                
+                <!-- PAUSE/RESUME CONTROLS -->
+                <button v-if="isGameStarted && !isGamePaused" @click="togglePause" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-400 border border-slate-700 flex items-center justify-center transition" title="Pause Game">
+                    <i class="fas fa-pause text-xs"></i>
+                </button>
+                <button v-if="isGamePaused" @click="togglePause" class="w-8 h-8 rounded-full bg-green-900/50 hover:bg-green-800 text-green-400 border border-green-700 flex items-center justify-center transition animate-pulse" title="Resume Game">
+                    <i class="fas fa-play text-xs"></i>
+                </button>
+
+                <div class="flex flex-col items-end cursor-pointer" @click="!isGameStarted ? toggleTimerStart() : null">
+                    <span :class="['font-mono text-xl font-bold leading-none', isTimeLow ? 'text-red-500 pulse-red' : isGamePaused ? 'text-yellow-500' : 'text-slate-200']">
+                        {{ timerDisplay }}
+                    </span>
+                    <span v-if="!isGameStarted" class="text-[9px] text-blue-400 uppercase font-bold tracking-wider">START</span>
+                    <span v-else-if="isGamePaused" class="text-[9px] text-yellow-500 uppercase font-bold tracking-wider">PAUSED</span>
+                </div>
+                
+                <button @click="showProfileModal = true" class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white">
+                    <i class="fas fa-user-cog text-xs"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN CONTENT AREA -->
+        <div class="flex-1 flex overflow-hidden relative">
+            
+            <!-- PAUSE OVERLAY -->
+            <div v-if="isGamePaused" class="absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center select-none">
+                <div class="bg-slate-900 border border-slate-700 p-8 rounded-2xl shadow-2xl max-w-sm w-full">
+                    <i class="fas fa-pause-circle text-5xl text-yellow-500 mb-4"></i>
+                    <h2 class="text-2xl font-black text-white uppercase tracking-widest mb-2">Game Paused</h2>
+                    <p class="text-slate-400 text-sm mb-6">The timer is stopped. Chat is disabled.</p>
+                    <button @click="togglePause" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-green-900/30 transition">
+                        RESUME GAME
+                    </button>
+                </div>
+            </div>
+
+            <!-- SIDEBAR -->
+            <div :class="[
+                'absolute inset-y-0 left-0 w-72 bg-slate-900 border-r border-slate-800 z-30 transition-transform duration-300 transform md:relative md:translate-x-0 flex flex-col',
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            ]">
+                <div class="p-3 border-b border-slate-800 bg-slate-900/50 backdrop-blur">
+                    <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Conversations</h3>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                    <!-- Group Chat Button -->
+                    <button 
+                        @click="switchThread(null, 'Group Chat')"
+                        :class="['w-full p-2.5 rounded-lg flex items-center gap-3 transition relative group', 
+                            !activeThread.id ? 'bg-blue-900/40 border border-blue-500/50' : 'hover:bg-slate-800 border border-transparent']"
+                    >
+                        <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white shrink-0 shadow-sm group-hover:bg-slate-600 transition">
+                            <i class="fas fa-users text-sm"></i>
+                        </div>
+                        <div class="text-left flex-1 min-w-0">
+                            <div class="font-bold text-sm text-white truncate">Group Chat</div>
+                            <div class="text-[11px] text-slate-400 truncate">Public Channel</div>
+                        </div>
+                        <div v-if="unreadCounts['group'] > 0" class="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-red-900/50 animate-pulse">
+                            {{ unreadCounts['group'] }}
+                        </div>
+                    </button>
+
+                    <div class="h-px bg-slate-800 mx-2 my-2"></div>
+                    <div class="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider py-1">Direct Messages</div>
+
+                    <!-- DM Buttons -->
+                    <button 
+                        v-for="p in otherPlayers" 
+                        :key="p.id"
+                        @click="switchThread(p.id, p.character_name)"
+                        :class="['w-full p-2.5 rounded-lg flex items-center gap-3 transition relative group', 
+                            activeThread.id === p.id ? 'bg-slate-800 border border-slate-700' : 'hover:bg-slate-800/50 border border-transparent']"
+                    >
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm border border-white/10 shrink-0 shadow-sm" 
+                             :style="{ backgroundColor: getPlayerColor(p.character_name) }">
+                            {{ p.character_name.charAt(0) }}
+                        </div>
+                        <div class="text-left flex-1 min-w-0">
+                            <div class="font-bold text-sm text-slate-200 truncate">{{ p.character_name }}</div>
+                            <div class="text-[11px] text-slate-500 truncate">{{ p.display_name }}</div>
+                        </div>
+                        <div v-if="unreadCounts[p.id] > 0" class="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-red-900/50 animate-pulse">
+                            {{ unreadCounts[p.id] }}
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="absolute inset-0 bg-black/50 z-20 md:hidden"></div>
+
+            <!-- CHAT FEED -->
+            <main class="flex-1 flex flex-col bg-slate-950 relative w-full">
+                <div class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth" ref="chatContainer">
+                    
+                    <!-- X-Card Alert Banner -->
+                    <div v-if="lastXCardTime" class="sticky top-0 z-10 mx-4 mt-2 p-4 bg-red-900/90 border-l-4 border-red-500 rounded shadow-xl backdrop-blur text-center animate-bounce">
+                        <i class="fas fa-hand-paper text-red-200 text-2xl mb-1"></i>
+                        <h3 class="font-black text-red-100 uppercase tracking-widest">GAME PAUSED</h3>
+                        <p class="text-red-200 text-xs">Someone has tapped the X-Card.</p>
+                    </div>
+
+                    <div v-for="(msg, index) in filteredMessages" :key="msg.id" class="flex flex-col w-full animate-fade-in-up">
+                        <div v-if="msg.type === 'system'" class="flex justify-center my-2">
+                            <span class="bg-slate-800/80 text-slate-400 text-xs px-3 py-1 rounded-full font-mono border border-slate-700/50">{{ msg.content }}</span>
+                        </div>
+                        <div v-else-if="msg.type === 'x_card'" class="x-card-flash p-4 rounded-lg border-2 border-red-500 text-center my-4 shadow-[0_0_20px_rgba(220,38,38,0.5)]">
+                            <div class="font-black text-white text-xl tracking-widest uppercase mb-1">⚠️ SAFETY STOP</div>
+                            <div class="text-red-100 text-sm font-bold">The X-Card has been played. Please pause immediately.</div>
+                        </div>
+                        <div v-else class="flex flex-col w-full" :class="msg.isMine ? 'items-end' : 'items-start'">
+                            <div v-if="!msg.isMine" class="flex items-center gap-2 mb-1 ml-1">
+                                <span class="text-[10px] font-bold tracking-wide uppercase" :style="{ color: getPlayerColor(msg.player_character) }">{{ msg.player_name }}</span>
+                            </div>
+                            <div :class="['max-w-[85%] md:max-w-[70%] px-4 py-2.5 text-sm leading-relaxed shadow-sm break-words relative bubble-tip', msg.isMine ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm border-none' : 'bg-slate-800 text-slate-200 rounded-2xl rounded-bl-sm border border-slate-700']" :style="!msg.isMine ? { borderLeft: `3px solid ${getPlayerColor(msg.player_character)}` } : {}">
+                                {{ msg.content }}
+                            </div>
+                            <span class="text-[9px] text-slate-600 mt-1 mx-1 font-mono">{{ formatTime(msg.created_at) }}</span>
+                        </div>
+                    </div>
+                    <div ref="bottomMarker" class="h-4"></div>
+                </div>
+
+                <!-- INPUT AREA -->
+                <footer class="bg-slate-900 p-3 border-t border-slate-800 shrink-0">
+                    <form @submit.prevent="sendMessage" class="flex gap-3 items-end max-w-4xl mx-auto">
+                        <button type="button" @click="triggerXCard" :disabled="isGamePaused" class="h-10 w-10 shrink-0 rounded-full border border-red-900/50 hover:bg-red-900/20 text-red-800 hover:text-red-500 transition flex items-center justify-center disabled:opacity-50" title="Tap X-Card (Safety Tool)">
+                            <i class="fas fa-shield-alt"></i>
+                        </button>
+                        <textarea v-model="newMessage" @keydown.enter.exact.prevent="sendMessage" :disabled="isGamePaused" :placeholder="isGamePaused ? 'Game Paused' : (activeThread.id ? `Message ${activeThread.name}...` : 'Message Group...')" class="flex-1 bg-slate-950 border border-slate-700 text-white rounded-2xl p-3 max-h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none text-sm placeholder-slate-600 disabled:opacity-50 disabled:cursor-not-allowed" rows="1"></textarea>
+                        <button type="submit" :disabled="!newMessage.trim() || isGamePaused" class="h-10 w-10 shrink-0 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:bg-slate-700 text-white flex items-center justify-center transition shadow-lg shadow-blue-900/30">
+                            <i class="fas fa-paper-plane text-sm"></i>
+                        </button>
+                    </form>
+                </footer>
+            </main>
+        </div>
+
+        <!-- PROFILE MODAL -->
+        <div v-if="showProfileModal" class="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+                <h3 class="text-white font-bold text-lg mb-4">Identity Settings</h3>
+                <div class="mb-4">
+                    <label class="text-xs text-slate-500 uppercase font-bold">Current Display Name</label>
+                    <input v-model="tempDisplayName" type="text" class="w-full mt-1 bg-slate-950 border border-slate-700 rounded p-2 text-white">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button @click="showProfileModal = false" class="text-slate-400 hover:text-white text-sm px-3">Cancel</button>
+                    <button @click="updateProfile" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-500">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MILESTONE ALERT MODAL -->
+        <transition name="fade">
+            <div v-if="activeMilestone" class="absolute inset-0 z-50 flex items-center justify-center bg-red-900/90 backdrop-blur-sm p-8 text-center" @click="activeMilestone = null">
+                <div class="max-w-md">
+                    <h1 class="text-6xl font-black text-white mb-2">{{ activeMilestone }}m</h1>
+                    <div class="h-1 w-24 bg-white mx-auto mb-6"></div>
+                    <p class="text-2xl font-bold text-red-100 uppercase tracking-widest animate-pulse">Reveal Clue Card</p>
+                    <p class="text-sm text-red-200 mt-8">(Tap to dismiss)</p>
+                </div>
+            </div>
+        </transition>
+    </div>
+</div>
+
+<script type="module">
+    import { createApp, ref, computed, onMounted, nextTick, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const CHAR_COLORS = { 'Jack Briarwood': '#EF4444', 'Julia North': '#A855F7', 'Dakota Travis': '#22C55E', 'Charlie Barnes': '#F97316', 'Evan Holwell': '#3B82F6', 'Morgan Bridges': '#F97316', 'SYSTEM': '#94a3b8' };
+    const MILESTONES = [80, 70, 60, 50, 45, 40, 35, 30, 20, 10];
+
+    const AudioEngine = {
+        ctx: null,
+        init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+        playTone(type) {
+            if (!this.ctx) this.init();
+            const t = this.ctx.currentTime, osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            if (type === 'incoming') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(300, t + 0.1);
+                gain.gain.setValueAtTime(0.1, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.start(t); osc.stop(t + 0.1);
+            } else if (type === 'outgoing') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(200, t);
+                gain.gain.setValueAtTime(0.05, t); gain.gain.linearRampToValueAtTime(0, t + 0.1);
+                osc.start(t); osc.stop(t + 0.1);
+            } else if (type === 'alert') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.linearRampToValueAtTime(100, t + 0.3);
+                gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.5);
+                osc.start(t); osc.stop(t + 0.5);
+                const osc2 = this.ctx.createOscillator(), gain2 = this.ctx.createGain();
+                osc2.connect(gain2); gain2.connect(this.ctx.destination);
+                osc2.type = 'sawtooth'; osc2.frequency.setValueAtTime(150, t + 0.2);
+                gain2.gain.setValueAtTime(0.2, t + 0.2); gain2.gain.linearRampToValueAtTime(0, t + 0.7);
+                osc2.start(t + 0.2); osc2.stop(t + 0.7);
+            } else if (type === 'milestone') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(660, t); 
+                gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.1, t + 0.05); gain.gain.exponentialRampToValueAtTime(0.001, t + 2);
+                osc.start(t); osc.stop(t + 2);
+            }
+        }
+    };
+
+    createApp({
+        setup() {
+            const view = ref('setup'), isLoading = ref(false), errorMsg = ref(''), config = ref({ url: localStorage.getItem('alice_sb_url') || '', key: localStorage.getItem('alice_sb_key') || '' });
+            const form = ref({ roomCode: '', character: '' }), currentUser = ref(null), currentRoom = ref(null), allPlayers = ref([]);
+            const messages = ref([]); // Initialize as array, not ref([])
+            const newMessage = ref(''), showProfileModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
+            const activeMilestone = ref(null), alertedMilestones = ref(new Set()), lastXCardTime = ref(null), unreadCounts = ref({ group: 0 });
+            const supabase = ref(null), bottomMarker = ref(null);
+            const timerDisplay = ref('90:00'), isGameStarted = ref(false), isTimeLow = ref(false);
+            
+            // PAUSE STATE
+            const isGamePaused = computed(() => !!currentRoom.value?.paused_at);
+
+            const otherPlayers = computed(() => currentUser.value ? allPlayers.value.filter(p => p.id !== currentUser.value.id) : []);
+            const selectableCharacters = computed(() => Object.keys(CHAR_COLORS).filter(name => name !== 'SYSTEM'));
+            const filteredMessages = computed(() => {
+                if (!currentUser.value) return [];
+                return messages.value.filter(msg => {
+                    if (msg.type === 'system' || msg.type === 'x_card') return true;
+                    if (activeThread.value.id) {
+                        const otherId = activeThread.value.id;
+                        return (msg.player_id === currentUser.value.id && msg.recipient_id === otherId) || (msg.player_id === otherId && msg.recipient_id === currentUser.value.id);
+                    }
+                    return !msg.recipient_id;
+                });
+            });
+
+            onMounted(() => { if (config.value.url && config.value.key) initSupabase(); document.addEventListener('click', () => AudioEngine.init(), { once: true }); });
+
+            const initSupabase = () => { try { supabase.value = createClient(config.value.url, config.value.key); view.value = 'lobby'; } catch(e) { view.value = 'setup'; } };
+            const saveConfig = () => { localStorage.setItem('alice_sb_url', config.value.url); localStorage.setItem('alice_sb_key', config.value.key); initSupabase(); };
+            const getPlayerColor = (charName) => CHAR_COLORS[charName] || '#94a3b8';
+
+            const handleGameAction = async (action) => {
+                if(!form.value.roomCode || !form.value.character) return;
+                isLoading.value = true; errorMsg.value = '';
+                try {
+                    let room;
+                    if (action === 'create') {
+                        const { data, error } = await supabase.value.from('rooms').insert({ code: form.value.roomCode, is_active: true }).select().single();
+                        if (error) throw error; room = data;
+                    } else {
+                        const { data, error } = await supabase.value.from('rooms').select().eq('code', form.value.roomCode).single();
+                        if (error || !data) throw new Error("Room not found"); room = data;
+                    }
+                    const { data: existing } = await supabase.value.from('players').select().eq('room_id', room.id).eq('character_name', form.value.character).single();
+                    let player;
+                    if (existing) {
+                        player = existing;
+                        if (!player.color_hex) await supabase.value.from('players').update({ color_hex: CHAR_COLORS[form.value.character] }).eq('id', player.id);
+                    } else {
+                        const { data: newP, error: pErr } = await supabase.value.from('players').insert({ room_id: room.id, character_name: form.value.character, display_name: form.value.character, color_hex: CHAR_COLORS[form.value.character] }).select().single();
+                        if (pErr) throw pErr; player = newP;
+                    }
+                    currentRoom.value = room; currentUser.value = player; tempDisplayName.value = player.display_name; await startGameSession();
+                } catch (e) { errorMsg.value = e.message; } finally { isLoading.value = false; }
+            };
+
+            const startGameSession = async () => {
+                view.value = 'game';
+                const [msgRes, playerRes] = await Promise.all([
+                    supabase.value.from('messages').select('*').eq('room_id', currentRoom.value.id).order('created_at', { ascending: true }),
+                    supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id)
+                ]);
+                if (msgRes.data) messages.value = msgRes.data.map(processIncomingMessage);
+                if (playerRes.data) allPlayers.value = playerRes.data;
+                scrollToBottom();
+
+                const channel = supabase.value.channel(`game:${currentRoom.value.id}`)
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
+                        const newMsg = processIncomingMessage(payload.new);
+                        messages.value.push(newMsg);
+                        if (newMsg.type === 'x_card') {
+                            AudioEngine.playTone('alert'); lastXCardTime.value = Date.now(); setTimeout(() => lastXCardTime.value = null, 5000);
+                        } else if (!newMsg.isMine && newMsg.type === 'chat') {
+                            if ((!newMsg.recipient_id && !activeThread.value.id) || (newMsg.recipient_id && activeThread.value.id === newMsg.player_id)) {
+                                AudioEngine.playTone('incoming');
+                            } else {
+                                const key = newMsg.recipient_id ? newMsg.player_id : 'group';
+                                unreadCounts.value[key] = (unreadCounts.value[key] || 0) + 1;
+                                AudioEngine.playTone('incoming');
+                            }
+                        }
+                        scrollToBottom();
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoom.value.id}` }, async () => {
+                        const { data } = await supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id); allPlayers.value = data;
+                    })
+                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${currentRoom.value.id}` }, (payload) => {
+                        // SYNC ROOM STATE (Start Time & Pause State)
+                        if (payload.new) {
+                            currentRoom.value = payload.new;
+                            syncTimer();
+                        }
+                    })
+                    .subscribe();
+
+                syncTimer();
+                setInterval(updateTimerDisplay, 1000);
+            };
+
+            const processIncomingMessage = (msg) => {
+                const sender = allPlayers.value.find(p => p.id === msg.player_id);
+                return { ...msg, isMine: msg.player_id === currentUser.value.id, player_character: sender ? sender.character_name : 'Unknown', player_name: sender ? sender.display_name : 'Unknown' };
+            };
+
+            const switchThread = (id, name) => { activeThread.value = { id, name }; isSidebarOpen.value = false; unreadCounts.value[id || 'group'] = 0; scrollToBottom(); };
+
+            const sendMessage = async () => {
+                if(!newMessage.value.trim()) return;
+                const txt = newMessage.value; newMessage.value = '';
+                const payload = { room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: currentUser.value.display_name, content: txt, type: 'chat', recipient_id: activeThread.value.id };
+                await supabase.value.from('messages').insert(payload); AudioEngine.playTone('outgoing');
+            };
+
+            // Trigger X-Card -> ALSO PAUSE
+            const triggerXCard = async () => {
+                if(!confirm("Tap the X-Card? This will alert everyone to pause.")) return;
+                
+                // 1. Send Alert
+                await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'ANONYMOUS', content: 'THE X-CARD HAS BEEN TAPPED.', type: 'x_card' });
+                
+                // 2. Auto-Pause (if not already paused)
+                if (!isGamePaused.value) {
+                    await togglePause(true); // Force pause = true, silent param
+                }
+            };
+
+            const togglePause = async (arg) => {
+                if (!currentRoom.value.game_start_time) return; // Can't pause if not started
+                
+                // Fix: @click passes an Event object, which is truthy. 
+                // We must ensure forcePause is actually a boolean, otherwise default to false.
+                const forcePause = typeof arg === 'boolean' ? arg : false;
+                
+                const now = new Date();
+                
+                if (isGamePaused.value && !forcePause) {
+                    // RESUME LOGIC
+                    const pausedAt = new Date(currentRoom.value.paused_at);
+                    const diff = now.getTime() - pausedAt.getTime();
+                    const oldStart = new Date(currentRoom.value.game_start_time);
+                    const newStart = new Date(oldStart.getTime() + diff);
+
+                    // OPTIMISTIC LOCAL UPDATE (Create new object reference to ensure reactivity)
+                    const updatedRoom = {
+                        ...currentRoom.value,
+                        paused_at: null,
+                        game_start_time: newStart.toISOString()
+                    };
+                    currentRoom.value = updatedRoom;
+
+                    await supabase.value.from('rooms').update({ 
+                        paused_at: null, 
+                        game_start_time: newStart.toISOString() 
+                    }).eq('id', currentRoom.value.id);
+                    
+                    // Announce Resume
+                    await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'Game Resumed.', type: 'system' });
+
+                } else {
+                    // PAUSE LOGIC
+                    // OPTIMISTIC LOCAL UPDATE
+                    const updatedRoom = {
+                        ...currentRoom.value,
+                        paused_at: now.toISOString()
+                    };
+                    currentRoom.value = updatedRoom;
+
+                    await supabase.value.from('rooms').update({ paused_at: now.toISOString() }).eq('id', currentRoom.value.id);
+                    
+                    // Announce Pause
+                    await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'Game Paused.', type: 'system' });
+                }
+            };
+
+            const updateProfile = async () => {
+                if(!tempDisplayName.value.trim()) return;
+                await supabase.value.from('players').update({ display_name: tempDisplayName.value }).eq('id', currentUser.value.id);
+                currentUser.value.display_name = tempDisplayName.value; showProfileModal.value = false;
+            };
+
+            const toggleTimerStart = async () => {
+                if (isGameStarted.value || !currentUser.value) return;
+                if (!confirm("Start the 90-minute timer for everyone?")) return;
+                await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'The search for Alice has begun. 90:00 remaining.', type: 'system' });
+                await supabase.value.from('rooms').update({ game_start_time: new Date().toISOString() }).eq('id', currentRoom.value.id);
+            };
+
+            const syncTimer = () => { if (currentRoom.value && currentRoom.value.game_start_time) isGameStarted.value = true; updateTimerDisplay(); };
+
+            const updateTimerDisplay = () => {
+                if (!currentRoom.value || !currentRoom.value.game_start_time) { timerDisplay.value = "90:00"; return; }
+                
+                // If paused, calculate from PAUSE TIME, not NOW
+                const endPoint = isGamePaused.value ? new Date(currentRoom.value.paused_at) : new Date();
+                const start = new Date(currentRoom.value.game_start_time).getTime();
+                const now = endPoint.getTime();
+                const duration = 90 * 60 * 1000;
+                const remaining = duration - (now - start);
+
+                if (remaining <= 0) { timerDisplay.value = "00:00"; isTimeLow.value = true; return; }
+
+                // Milestones (Only trigger if RUNNING)
+                if (!isGamePaused.value) {
+                    const mins = Math.ceil(remaining / 60000);
+                    if (MILESTONES.includes(mins) && !alertedMilestones.value.has(mins)) {
+                        activeMilestone.value = mins; alertedMilestones.value.add(mins); AudioEngine.playTone('milestone');
+                    }
+                }
+
+                isTimeLow.value = remaining < (10 * 60 * 1000);
+                const m = Math.floor(remaining / 60000);
+                const s = Math.floor((remaining % 60000) / 1000);
+                timerDisplay.value = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            };
+
+            const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const scrollToBottom = async () => { await nextTick(); bottomMarker.value?.scrollIntoView({ behavior: 'smooth' }); };
+
+            return {
+                view, config, form, CHAR_COLORS, currentUser, currentRoom, otherPlayers, filteredMessages, unreadCounts, selectableCharacters,
+                newMessage, showProfileModal, tempDisplayName, isSidebarOpen, activeThread, timerDisplay, isGameStarted, isTimeLow, activeMilestone, lastXCardTime, isLoading, errorMsg, bottomMarker,
+                handleGameAction, sendMessage, triggerXCard, updateProfile, toggleTimerStart, switchThread, getPlayerColor, formatTime, saveConfig,
+                togglePause, isGamePaused
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
