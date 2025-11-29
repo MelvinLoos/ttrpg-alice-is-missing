@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Alice is Missing</title>
     
+    <!-- PWA & Mobile Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AiM Chat">
+    <link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4f1.png">
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -21,6 +29,9 @@
             font-family: 'Inter', sans-serif;
             overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
             -webkit-tap-highlight-color: transparent;
+            /* iOS Safe Area Support */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
         }
         
         /* Custom Scrollbar */
@@ -69,6 +80,7 @@
 <div id="app" class="h-[100dvh] w-full flex flex-col overflow-hidden bg-slate-950 relative">
 
     <!-- ================= SCENE 1: SETUP (API KEYS) ================= -->
+    <!-- Mobile Fix: Added overflow-y-auto to allow scrolling if keyboard covers inputs -->
     <div v-if="view === 'setup'" class="flex-1 flex flex-col overflow-y-auto p-6 w-full">
         <div class="w-full max-w-md mx-auto my-auto space-y-8 pb-10">
             <div class="text-center">
@@ -96,6 +108,7 @@
     </div>
 
     <!-- ================= SCENE 2: LOBBY ================= -->
+    <!-- Mobile Fix: Added overflow-y-auto and removed fixed centering that clipped content -->
     <div v-else-if="view === 'lobby'" class="flex-1 flex flex-col overflow-y-auto p-6 w-full">
         <div class="w-full max-w-md mx-auto my-auto space-y-8 pb-10">
             <div class="text-center space-y-2">
@@ -346,6 +359,7 @@
             </div>
         </div>
 
+        <!-- MILESTONE ALERT MODAL -->
         <transition name="fade">
             <div v-if="activeMilestone" class="absolute inset-0 z-50 flex items-center justify-center bg-red-900/90 backdrop-blur-sm p-8 text-center" @click="activeMilestone = null">
                 <div class="max-w-md">
@@ -364,6 +378,9 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
     import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'
 
+    // --- DEPLOYMENT CONFIG ---
+    // These strings are replaced by GitHub Actions workflow during deployment.
+    // If running locally, they remain as placeholder text.
     const INJECTED_URL = "__SUPABASE_URL__";
     const INJECTED_KEY = "__SUPABASE_KEY__";
 
@@ -404,7 +421,9 @@
 
     createApp({
         setup() {
+            // DEPLOYMENT LOGIC
             const hasEnvSecrets = INJECTED_URL.startsWith("http");
+            
             const savedUrl = hasEnvSecrets ? INJECTED_URL : (localStorage.getItem('alice_sb_url') || '');
             const savedKey = hasEnvSecrets ? INJECTED_KEY : (localStorage.getItem('alice_sb_key') || '');
 
@@ -415,14 +434,17 @@
             const messages = ref([]); 
             const newMessage = ref(''), showSettingsModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
             const activeMilestone = ref(null), alertedMilestones = ref(new Set()), lastXCardTime = ref(null), unreadCounts = ref({ group: 0 });
+            
+            // EMOJI STATE
             const showEmojiPicker = ref(false);
+
             const supabase = ref(null), bottomMarker = ref(null);
             const timerDisplay = ref('90:00'), isGameStarted = ref(false), isTimeLow = ref(false);
             
             const isGamePaused = computed(() => !!currentRoom.value?.paused_at);
+
             const otherPlayers = computed(() => currentUser.value ? allPlayers.value.filter(p => p.id !== currentUser.value.id) : []);
             const selectableCharacters = computed(() => Object.keys(CHAR_COLORS).filter(name => name !== 'SYSTEM'));
-            
             const filteredMessages = computed(() => {
                 if (!currentUser.value) return [];
                 return messages.value.filter(msg => {
@@ -437,7 +459,14 @@
 
             onMounted(() => { 
                 if (config.value.url && config.value.key) initSupabase(); 
-                document.addEventListener('click', () => AudioEngine.init(), { once: true }); 
+                document.addEventListener('click', () => AudioEngine.init(), { once: true });
+                
+                // REGISTER SERVICE WORKER FOR PWA
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('./sw.js')
+                        .then(() => console.log('Service Worker Registered'))
+                        .catch(err => console.log('SW Registration Failed', err));
+                }
             });
 
             const initSupabase = () => { 
@@ -544,10 +573,11 @@
                     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
                         messages.value = messages.value.filter(m => m.id !== payload.old.id);
                     })
+                    // PLAYER UPDATES (Includes Deletes/Kicks)
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoom.value.id}` }, async () => {
                         const { data } = await supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id); 
                         allPlayers.value = data;
-                        
+
                         // KICK CHECK: If I am no longer in the DB (deleted via reset), force logout
                         const me = allPlayers.value.find(p => p.id === currentUser.value.id);
                         if (!me && currentUser.value) {
@@ -596,18 +626,22 @@
                     const diff = now.getTime() - pausedAt.getTime();
                     const oldStart = new Date(currentRoom.value.game_start_time);
                     const newStart = new Date(oldStart.getTime() + diff);
+
                     const updatedRoom = { ...currentRoom.value, paused_at: null, game_start_time: newStart.toISOString() };
                     currentRoom.value = updatedRoom;
+
                     await supabase.value.from('rooms').update({ paused_at: null, game_start_time: newStart.toISOString() }).eq('id', currentRoom.value.id);
                     await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'Game Resumed.', type: 'system' });
                 } else {
                     const updatedRoom = { ...currentRoom.value, paused_at: now.toISOString() };
                     currentRoom.value = updatedRoom;
+
                     await supabase.value.from('rooms').update({ paused_at: now.toISOString() }).eq('id', currentRoom.value.id);
                     await supabase.value.from('messages').insert({ room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: 'SYSTEM', content: 'Game Paused.', type: 'system' });
                 }
             };
 
+            // LOGOUT BUTTON HANDLER
             const logout = () => {
                 if(!confirm("Leave the current game? You can rejoin later.")) return;
                 localStorage.removeItem('alice_room_id');
@@ -617,12 +651,20 @@
 
             const resetSession = async () => {
                 if(!confirm("DANGER: This will delete ALL messages, reset the timer, AND REMOVE ALL PLAYERS. Everyone will be returned to the lobby. Are you sure?")) return;
+                
                 showSettingsModal.value = false;
+                
+                // 1. Delete Messages
                 await supabase.value.from('messages').delete().eq('room_id', currentRoom.value.id);
+                
+                // 2. Reset Room Timer
                 const updatedRoom = { ...currentRoom.value, game_start_time: null, paused_at: null };
                 currentRoom.value = updatedRoom;
                 await supabase.value.from('rooms').update({ game_start_time: null, paused_at: null }).eq('id', currentRoom.value.id);
+                
+                // 3. DELETE PLAYERS (This triggers the kick logic for everyone)
                 await supabase.value.from('players').delete().eq('room_id', currentRoom.value.id);
+
                 messages.value = [];
                 isGameStarted.value = false;
                 alertedMilestones.value.clear();
@@ -644,19 +686,27 @@
             const syncTimer = () => { if (currentRoom.value && currentRoom.value.game_start_time) isGameStarted.value = true; updateTimerDisplay(); };
 
             const updateTimerDisplay = () => {
-                if (!currentRoom.value || !currentRoom.value.game_start_time) { timerDisplay.value = "90:00"; isGameStarted.value = false; return; }
+                if (!currentRoom.value || !currentRoom.value.game_start_time) { 
+                    timerDisplay.value = "90:00"; 
+                    isGameStarted.value = false; 
+                    return; 
+                }
+                
                 const endPoint = isGamePaused.value ? new Date(currentRoom.value.paused_at) : new Date();
                 const start = new Date(currentRoom.value.game_start_time).getTime();
                 const now = endPoint.getTime();
                 const duration = 90 * 60 * 1000;
                 const remaining = duration - (now - start);
+
                 if (remaining <= 0) { timerDisplay.value = "00:00"; isTimeLow.value = true; return; }
+
                 if (!isGamePaused.value) {
                     const mins = Math.ceil(remaining / 60000);
                     if (MILESTONES.includes(mins) && !alertedMilestones.value.has(mins)) {
                         activeMilestone.value = mins; alertedMilestones.value.add(mins); AudioEngine.playTone('milestone');
                     }
                 }
+
                 isTimeLow.value = remaining < (10 * 60 * 1000);
                 const m = Math.floor(remaining / 60000);
                 const s = Math.floor((remaining % 60000) / 1000);
