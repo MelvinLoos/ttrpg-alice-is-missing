@@ -20,6 +20,7 @@
             color: #e2e8f0; 
             font-family: 'Inter', sans-serif;
             overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+            -webkit-tap-highlight-color: transparent;
         }
         
         /* Custom Scrollbar */
@@ -54,76 +55,83 @@
 </head>
 <body>
 
-<div id="app" class="h-screen w-full flex flex-col overflow-hidden bg-slate-950 relative">
+<!-- Mobile Fix: h-[100dvh] ensures it fits the actual visible screen on mobile browsers -->
+<div id="app" class="h-[100dvh] w-full flex flex-col overflow-hidden bg-slate-950 relative">
 
     <!-- ================= SCENE 1: SETUP (API KEYS) ================= -->
-    <div v-if="view === 'setup'" class="flex-1 flex flex-col justify-center items-center p-6 space-y-8 max-w-md mx-auto w-full">
-        <div class="text-center">
-            <h1 class="text-3xl font-bold text-slate-100 tracking-widest">SYSTEM SETUP</h1>
-            <p class="text-slate-500 text-sm mt-2">Connect to the Silent Falls Network</p>
-        </div>
-        
-        <div class="w-full space-y-4">
-            <div>
-                <label class="text-xs uppercase font-bold text-slate-500 tracking-wider">Supabase URL</label>
-                <input v-model="config.url" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition mt-1">
+    <!-- Mobile Fix: Added overflow-y-auto to allow scrolling if keyboard covers inputs -->
+    <div v-if="view === 'setup'" class="flex-1 flex flex-col overflow-y-auto p-6 w-full">
+        <div class="w-full max-w-md mx-auto my-auto space-y-8 pb-10">
+            <div class="text-center">
+                <h1 class="text-3xl font-bold text-slate-100 tracking-widest">SYSTEM SETUP</h1>
+                <p class="text-slate-500 text-sm mt-2">Connect to the Silent Falls Network</p>
             </div>
+            
+            <div class="w-full space-y-4">
+                <div>
+                    <label class="text-xs uppercase font-bold text-slate-500 tracking-wider">Supabase URL</label>
+                    <input v-model="config.url" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition mt-1">
+                </div>
 
-            <div>
-                <label class="text-xs uppercase font-bold text-slate-500 tracking-wider">Supabase Anon Key</label>
-                <input v-model="config.key" type="password" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition mt-1">
+                <div>
+                    <label class="text-xs uppercase font-bold text-slate-500 tracking-wider">Supabase Anon Key</label>
+                    <input v-model="config.key" type="password" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none transition mt-1">
+                </div>
+
+                <button @click="saveConfig" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg shadow-lg shadow-blue-900/40 transition transform active:scale-95">
+                    ESTABLISH CONNECTION
+                </button>
             </div>
-
-            <button @click="saveConfig" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg shadow-lg shadow-blue-900/40 transition transform active:scale-95">
-                ESTABLISH CONNECTION
-            </button>
+            <p v-if="errorMsg" class="text-red-400 text-center text-sm">{{ errorMsg }}</p>
         </div>
-        <p v-if="errorMsg" class="text-red-400 text-center text-sm">{{ errorMsg }}</p>
     </div>
 
     <!-- ================= SCENE 2: LOBBY ================= -->
-    <div v-else-if="view === 'lobby'" class="flex-1 flex flex-col justify-center items-center p-6 space-y-8 max-w-md mx-auto w-full">
-        <div class="text-center space-y-2">
-            <h1 class="text-5xl font-black text-white tracking-tighter">ALICE IS <span class="text-red-600">MISSING</span></h1>
-            <p class="text-slate-500 font-mono text-xs tracking-widest uppercase">Secure Messaging Terminal</p>
-        </div>
-
-        <div class="w-full space-y-4 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
-            <!-- Room Code -->
-            <div>
-                <label class="text-xs uppercase font-bold text-slate-500">Access Code</label>
-                <input v-model="form.roomCode" @input="form.roomCode = form.roomCode.toUpperCase()" type="text" placeholder="CODE" class="w-full bg-slate-950 border border-slate-700 rounded p-4 text-center text-3xl tracking-[0.5em] font-mono uppercase text-white focus:border-red-600 outline-none transition">
+    <!-- Mobile Fix: Added overflow-y-auto and removed fixed centering that clipped content -->
+    <div v-else-if="view === 'lobby'" class="flex-1 flex flex-col overflow-y-auto p-6 w-full">
+        <div class="w-full max-w-md mx-auto my-auto space-y-8 pb-10">
+            <div class="text-center space-y-2">
+                <h1 class="text-5xl font-black text-white tracking-tighter">ALICE IS <span class="text-red-600">MISSING</span></h1>
+                <p class="text-slate-500 font-mono text-xs tracking-widest uppercase">Secure Messaging Terminal</p>
             </div>
 
-            <!-- Character Select -->
-            <div>
-                <label class="text-xs uppercase font-bold text-slate-500">Identity</label>
-                <div class="grid grid-cols-1 gap-2 mt-2">
-                    <button 
-                        v-for="name in selectableCharacters" 
-                        :key="name"
-                        @click="form.character = name"
-                        :class="[
-                            'p-3 rounded-lg border text-left transition flex items-center justify-between group',
-                            form.character === name ? 'border-white bg-slate-800' : 'border-slate-800 bg-slate-950 hover:border-slate-600'
-                        ]"
-                    >
-                        <span class="font-bold" :style="{ color: CHAR_COLORS[name] }">{{ name }}</span>
-                        <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: CHAR_COLORS[name] }"></div>
+            <div class="w-full space-y-4 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+                <!-- Room Code -->
+                <div>
+                    <label class="text-xs uppercase font-bold text-slate-500">Access Code</label>
+                    <input v-model="form.roomCode" @input="form.roomCode = form.roomCode.toUpperCase()" type="text" placeholder="CODE" class="w-full bg-slate-950 border border-slate-700 rounded p-4 text-center text-3xl tracking-[0.5em] font-mono uppercase text-white focus:border-red-600 outline-none transition">
+                </div>
+
+                <!-- Character Select -->
+                <div>
+                    <label class="text-xs uppercase font-bold text-slate-500">Identity</label>
+                    <div class="grid grid-cols-1 gap-2 mt-2">
+                        <button 
+                            v-for="name in selectableCharacters" 
+                            :key="name"
+                            @click="form.character = name"
+                            :class="[
+                                'p-3 rounded-lg border text-left transition flex items-center justify-between group',
+                                form.character === name ? 'border-white bg-slate-800' : 'border-slate-800 bg-slate-950 hover:border-slate-600'
+                            ]"
+                        >
+                            <span class="font-bold" :style="{ color: CHAR_COLORS[name] }">{{ name }}</span>
+                            <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: CHAR_COLORS[name] }"></div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button @click="handleGameAction('join')" :disabled="isLoading" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-lg transition border border-slate-700">
+                        JOIN
+                    </button>
+                    <button @click="handleGameAction('create')" :disabled="isLoading" class="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition shadow-lg shadow-red-900/40">
+                        CREATE
                     </button>
                 </div>
             </div>
-
-            <div class="flex gap-3 pt-4">
-                <button @click="handleGameAction('join')" :disabled="isLoading" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-lg transition border border-slate-700">
-                    JOIN
-                </button>
-                <button @click="handleGameAction('create')" :disabled="isLoading" class="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition shadow-lg shadow-red-900/40">
-                    CREATE
-                </button>
-            </div>
+            <p v-if="errorMsg" class="text-red-400 text-center text-sm bg-red-950/50 p-2 rounded border border-red-900 w-full">{{ errorMsg }}</p>
         </div>
-        <p v-if="errorMsg" class="text-red-400 text-center text-sm bg-red-950/50 p-2 rounded border border-red-900 w-full">{{ errorMsg }}</p>
     </div>
 
     <!-- ================= SCENE 3: GAME INTERFACE ================= -->
@@ -346,6 +354,12 @@
     import { createApp, ref, computed, onMounted, nextTick, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
+    // --- DEPLOYMENT CONFIG ---
+    // These strings are replaced by GitHub Actions workflow during deployment.
+    // If running locally, they remain as placeholder text.
+    const INJECTED_URL = "__SUPABASE_URL__";
+    const INJECTED_KEY = "__SUPABASE_KEY__";
+
     const CHAR_COLORS = { 'Jack Briarwood': '#EF4444', 'Julia North': '#A855F7', 'Dakota Travis': '#22C55E', 'Charlie Barnes': '#F97316', 'Evan Holwell': '#3B82F6', 'Morgan Bridges': '#F97316', 'SYSTEM': '#94a3b8' };
     const MILESTONES = [80, 70, 60, 50, 45, 40, 35, 30, 20, 10];
 
@@ -383,7 +397,16 @@
 
     createApp({
         setup() {
-            const view = ref('setup'), isLoading = ref(false), errorMsg = ref(''), config = ref({ url: localStorage.getItem('alice_sb_url') || '', key: localStorage.getItem('alice_sb_key') || '' });
+            // DEPLOYMENT LOGIC
+            // Check if placeholders were replaced by real keys
+            const hasEnvSecrets = INJECTED_URL.startsWith("http"); // "https://..." vs "__SUPABASE_URL__"
+            
+            const savedUrl = hasEnvSecrets ? INJECTED_URL : (localStorage.getItem('alice_sb_url') || '');
+            const savedKey = hasEnvSecrets ? INJECTED_KEY : (localStorage.getItem('alice_sb_key') || '');
+
+            const view = ref(savedUrl && savedKey ? 'lobby' : 'setup'), isLoading = ref(false), errorMsg = ref('');
+            const config = ref({ url: savedUrl, key: savedKey });
+
             const form = ref({ roomCode: '', character: '' }), currentUser = ref(null), currentRoom = ref(null), allPlayers = ref([]);
             const messages = ref([]); // Initialize as array, not ref([])
             const newMessage = ref(''), showSettingsModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
@@ -439,24 +462,25 @@
                 } catch (e) { errorMsg.value = e.message; } finally { isLoading.value = false; }
             };
 
+            const processIncomingMessage = (msg) => {
+                const sender = allPlayers.value.find(p => p.id === msg.player_id);
+                return { ...msg, isMine: msg.player_id === currentUser.value.id, player_character: sender ? sender.character_name : 'Unknown', player_name: sender ? sender.display_name : 'Unknown' };
+            };
+
             const startGameSession = async () => {
                 view.value = 'game';
                 const [msgRes, playerRes] = await Promise.all([
                     supabase.value.from('messages').select('*').eq('room_id', currentRoom.value.id).order('created_at', { ascending: true }),
                     supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id)
                 ]);
-                if (msgRes.data) messages.value = msgRes.data.map(processIncomingMessage);
+                
+                // ORDER FIXED: Set players first, THEN map messages (so sender lookup works)
                 if (playerRes.data) allPlayers.value = playerRes.data;
+                if (msgRes.data) messages.value = msgRes.data.map(processIncomingMessage);
+                
                 scrollToBottom();
 
                 const channel = supabase.value.channel(`game:${currentRoom.value.id}`)
-                    // LISTEN FOR DELETE EVENTS (Reset Session)
-                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
-                        // Optimistically clear everything if we detect a delete.
-                        // Since Reset deletes ALL, we can just wipe the array or filter.
-                        // payload.old.id is available.
-                        messages.value = messages.value.filter(m => m.id !== payload.old.id);
-                    })
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
                         const newMsg = processIncomingMessage(payload.new);
                         messages.value.push(newMsg);
@@ -473,11 +497,14 @@
                         }
                         scrollToBottom();
                     })
+                    // LISTEN FOR DELETE EVENTS (Reset Session)
+                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
+                        messages.value = messages.value.filter(m => m.id !== payload.old.id);
+                    })
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoom.value.id}` }, async () => {
                         const { data } = await supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id); allPlayers.value = data;
                     })
                     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${currentRoom.value.id}` }, (payload) => {
-                        // SYNC ROOM STATE (Start Time & Pause State)
                         if (payload.new) {
                             currentRoom.value = payload.new;
                             syncTimer();
@@ -487,11 +514,6 @@
 
                 syncTimer();
                 setInterval(updateTimerDisplay, 1000);
-            };
-
-            const processIncomingMessage = (msg) => {
-                const sender = allPlayers.value.find(p => p.id === msg.player_id);
-                return { ...msg, isMine: msg.player_id === currentUser.value.id, player_character: sender ? sender.character_name : 'Unknown', player_name: sender ? sender.display_name : 'Unknown' };
             };
 
             const switchThread = (id, name) => { activeThread.value = { id, name }; isSidebarOpen.value = false; unreadCounts.value[id || 'group'] = 0; scrollToBottom(); };
@@ -520,7 +542,6 @@
                     const oldStart = new Date(currentRoom.value.game_start_time);
                     const newStart = new Date(oldStart.getTime() + diff);
 
-                    // Optimistic update
                     const updatedRoom = { ...currentRoom.value, paused_at: null, game_start_time: newStart.toISOString() };
                     currentRoom.value = updatedRoom;
 
@@ -539,16 +560,12 @@
                 if(!confirm("DANGER: This will delete ALL messages and reset the timer for EVERYONE in the room. Are you sure?")) return;
                 
                 showSettingsModal.value = false;
-                
-                // 1. Delete Messages
                 await supabase.value.from('messages').delete().eq('room_id', currentRoom.value.id);
                 
-                // 2. Reset Room Timer
                 const updatedRoom = { ...currentRoom.value, game_start_time: null, paused_at: null };
                 currentRoom.value = updatedRoom;
                 await supabase.value.from('rooms').update({ game_start_time: null, paused_at: null }).eq('id', currentRoom.value.id);
                 
-                // 3. Clear Local
                 messages.value = [];
                 isGameStarted.value = false;
                 alertedMilestones.value.clear();
@@ -572,7 +589,7 @@
             const updateTimerDisplay = () => {
                 if (!currentRoom.value || !currentRoom.value.game_start_time) { 
                     timerDisplay.value = "90:00"; 
-                    isGameStarted.value = false; // Ensure UI reflects reset state
+                    isGameStarted.value = false; 
                     return; 
                 }
                 
