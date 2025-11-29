@@ -51,6 +51,16 @@
             content: ''; position: absolute; bottom: 0; width: 0; height: 0;
             border: 10px solid transparent; border-bottom-color: inherit;
         }
+
+        /* Emoji Picker Dark Mode Overrides */
+        emoji-picker {
+            width: 100%;
+            height: 300px;
+            --background: #1e293b;
+            --border-color: #334155;
+            --indicator-color: #3b82f6;
+            --button-hover-background: #334155;
+        }
     </style>
 </head>
 <body>
@@ -239,7 +249,7 @@
                     <button 
                         v-for="p in otherPlayers" 
                         :key="p.id"
-                        @click="switchThread(p.id, p.character_name)"
+                        @click="switchThread(p.id, p.display_name)"
                         :class="['w-full p-2.5 rounded-lg flex items-center gap-3 transition relative group', 
                             activeThread.id === p.id ? 'bg-slate-800 border border-slate-700' : 'hover:bg-slate-800/50 border border-transparent']"
                     >
@@ -247,10 +257,15 @@
                              :style="{ backgroundColor: getPlayerColor(p.character_name) }">
                             {{ p.character_name.charAt(0) }}
                         </div>
+                        
+                        <!-- SWAPPED DISPLAY LOGIC -->
                         <div class="text-left flex-1 min-w-0">
-                            <div class="font-bold text-sm text-slate-200 truncate">{{ p.character_name }}</div>
-                            <div class="text-[11px] text-slate-500 truncate">{{ p.display_name }}</div>
+                            <!-- Display Name (Dynamic) is now BIG -->
+                            <div class="font-bold text-sm text-slate-200 truncate">{{ p.display_name }}</div>
+                            <!-- Character Name (Real) is now SMALL -->
+                            <div class="text-[11px] text-slate-500 truncate">{{ p.character_name }}</div>
                         </div>
+
                         <div v-if="unreadCounts[p.id] > 0" class="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-red-900/50 animate-pulse">
                             {{ unreadCounts[p.id] }}
                         </div>
@@ -292,12 +307,28 @@
                     <div ref="bottomMarker" class="h-4"></div>
                 </div>
 
-                <!-- INPUT AREA -->
-                <footer class="bg-slate-900 p-3 border-t border-slate-800 shrink-0">
-                    <form @submit.prevent="sendMessage" class="flex gap-3 items-end max-w-4xl mx-auto">
+                <!-- INPUT AREA WITH EMOJI PICKER -->
+                <footer class="bg-slate-900 p-3 border-t border-slate-800 shrink-0 relative">
+                    
+                    <!-- Overlay to close emoji picker when clicking outside -->
+                    <div v-if="showEmojiPicker" @click="showEmojiPicker = false" class="fixed inset-0 z-40 bg-transparent"></div>
+
+                    <!-- Emoji Picker Popover -->
+                    <div v-if="showEmojiPicker" class="absolute bottom-20 left-4 z-50 shadow-2xl rounded-lg overflow-hidden border border-slate-700 w-80 max-w-[90vw]">
+                        <emoji-picker class="dark" @emoji-click="onEmojiClick"></emoji-picker>
+                    </div>
+
+                    <form @submit.prevent="sendMessage" class="flex gap-2 items-end max-w-4xl mx-auto relative z-10">
+                        <!-- X-Card Button -->
                         <button type="button" @click="triggerXCard" :disabled="isGamePaused" class="h-10 w-10 shrink-0 rounded-full border border-red-900/50 hover:bg-red-900/20 text-red-800 hover:text-red-500 transition flex items-center justify-center disabled:opacity-50" title="Tap X-Card (Safety Tool)">
                             <i class="fas fa-shield-alt"></i>
                         </button>
+
+                        <!-- Emoji Toggle Button -->
+                        <button type="button" @click="showEmojiPicker = !showEmojiPicker" class="h-10 w-10 shrink-0 text-slate-400 hover:text-yellow-400 transition flex items-center justify-center" title="Insert Emoji">
+                            <i class="far fa-smile text-xl"></i>
+                        </button>
+
                         <textarea v-model="newMessage" @keydown.enter.exact.prevent="sendMessage" :disabled="isGamePaused" :placeholder="isGamePaused ? 'Game Paused' : (activeThread.id ? `Message ${activeThread.name}...` : 'Message Group...')" class="flex-1 bg-slate-950 border border-slate-700 text-white rounded-2xl p-3 max-h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none text-sm placeholder-slate-600 disabled:opacity-50 disabled:cursor-not-allowed" rows="1"></textarea>
                         <button type="submit" :disabled="!newMessage.trim() || isGamePaused" class="h-10 w-10 shrink-0 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:bg-slate-700 text-white flex items-center justify-center transition shadow-lg shadow-blue-900/30">
                             <i class="fas fa-paper-plane text-sm"></i>
@@ -326,7 +357,7 @@
                     <button @click="resetSession" class="w-full border border-red-900/50 bg-red-900/20 text-red-400 hover:bg-red-900/40 p-3 rounded text-sm font-bold transition flex items-center justify-center gap-2">
                         <i class="fas fa-trash-alt"></i> Reset Session
                     </button>
-                    <p class="text-[10px] text-slate-600 mt-2 text-center">Deletes all messages and resets the timer for everyone.</p>
+                    <p class="text-[10px] text-slate-600 mt-2 text-center">Deletes all messages, resets the timer, AND removes all players.</p>
                 </div>
 
                 <div class="flex justify-end gap-3 pt-2">
@@ -353,10 +384,10 @@
 <script type="module">
     import { createApp, ref, computed, onMounted, nextTick, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+    // IMPORT EMOJI PICKER
+    import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'
 
     // --- DEPLOYMENT CONFIG ---
-    // These strings are replaced by GitHub Actions workflow during deployment.
-    // If running locally, they remain as placeholder text.
     const INJECTED_URL = "__SUPABASE_URL__";
     const INJECTED_KEY = "__SUPABASE_KEY__";
 
@@ -398,8 +429,7 @@
     createApp({
         setup() {
             // DEPLOYMENT LOGIC
-            // Check if placeholders were replaced by real keys
-            const hasEnvSecrets = INJECTED_URL.startsWith("http"); // "https://..." vs "__SUPABASE_URL__"
+            const hasEnvSecrets = INJECTED_URL.startsWith("http");
             
             const savedUrl = hasEnvSecrets ? INJECTED_URL : (localStorage.getItem('alice_sb_url') || '');
             const savedKey = hasEnvSecrets ? INJECTED_KEY : (localStorage.getItem('alice_sb_key') || '');
@@ -408,13 +438,16 @@
             const config = ref({ url: savedUrl, key: savedKey });
 
             const form = ref({ roomCode: '', character: '' }), currentUser = ref(null), currentRoom = ref(null), allPlayers = ref([]);
-            const messages = ref([]); // Initialize as array, not ref([])
+            const messages = ref([]); 
             const newMessage = ref(''), showSettingsModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
             const activeMilestone = ref(null), alertedMilestones = ref(new Set()), lastXCardTime = ref(null), unreadCounts = ref({ group: 0 });
+            
+            // EMOJI STATE
+            const showEmojiPicker = ref(false);
+
             const supabase = ref(null), bottomMarker = ref(null);
             const timerDisplay = ref('90:00'), isGameStarted = ref(false), isTimeLow = ref(false);
             
-            // PAUSE STATE
             const isGamePaused = computed(() => !!currentRoom.value?.paused_at);
 
             const otherPlayers = computed(() => currentUser.value ? allPlayers.value.filter(p => p.id !== currentUser.value.id) : []);
@@ -474,7 +507,6 @@
                     supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id)
                 ]);
                 
-                // ORDER FIXED: Set players first, THEN map messages (so sender lookup works)
                 if (playerRes.data) allPlayers.value = playerRes.data;
                 if (msgRes.data) messages.value = msgRes.data.map(processIncomingMessage);
                 
@@ -497,12 +529,20 @@
                         }
                         scrollToBottom();
                     })
-                    // LISTEN FOR DELETE EVENTS (Reset Session)
                     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoom.value.id}` }, (payload) => {
                         messages.value = messages.value.filter(m => m.id !== payload.old.id);
                     })
+                    // PLAYER UPDATES (Includes Deletes/Kicks)
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoom.value.id}` }, async () => {
-                        const { data } = await supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id); allPlayers.value = data;
+                        const { data } = await supabase.value.from('players').select('*').eq('room_id', currentRoom.value.id); 
+                        allPlayers.value = data;
+
+                        // NEW: Kick Check. If I am no longer in the DB, reset to lobby.
+                        const me = allPlayers.value.find(p => p.id === currentUser.value.id);
+                        if (!me) {
+                            alert("The session was reset. Returning to lobby.");
+                            location.reload(); 
+                        }
                     })
                     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${currentRoom.value.id}` }, (payload) => {
                         if (payload.new) {
@@ -523,6 +563,12 @@
                 const txt = newMessage.value; newMessage.value = '';
                 const payload = { room_id: currentRoom.value.id, player_id: currentUser.value.id, player_name: currentUser.value.display_name, content: txt, type: 'chat', recipient_id: activeThread.value.id };
                 await supabase.value.from('messages').insert(payload); AudioEngine.playTone('outgoing');
+            };
+
+            // ADD EMOJI LOGIC
+            const onEmojiClick = (event) => {
+                newMessage.value += event.detail.unicode;
+                showEmojiPicker.value = false;
             };
 
             const triggerXCard = async () => {
@@ -556,16 +602,23 @@
                 }
             };
 
+            // UPDATED: Now clears players too
             const resetSession = async () => {
-                if(!confirm("DANGER: This will delete ALL messages and reset the timer for EVERYONE in the room. Are you sure?")) return;
+                if(!confirm("DANGER: This will delete ALL messages, reset the timer, AND REMOVE ALL PLAYERS. Everyone will be returned to the lobby. Are you sure?")) return;
                 
                 showSettingsModal.value = false;
+                
+                // 1. Delete Messages
                 await supabase.value.from('messages').delete().eq('room_id', currentRoom.value.id);
                 
+                // 2. Reset Room Timer
                 const updatedRoom = { ...currentRoom.value, game_start_time: null, paused_at: null };
                 currentRoom.value = updatedRoom;
                 await supabase.value.from('rooms').update({ game_start_time: null, paused_at: null }).eq('id', currentRoom.value.id);
                 
+                // 3. DELETE PLAYERS (This triggers the kick logic for everyone)
+                await supabase.value.from('players').delete().eq('room_id', currentRoom.value.id);
+
                 messages.value = [];
                 isGameStarted.value = false;
                 alertedMilestones.value.clear();
@@ -621,7 +674,8 @@
                 view, config, form, CHAR_COLORS, currentUser, currentRoom, otherPlayers, filteredMessages, unreadCounts, selectableCharacters,
                 newMessage, showSettingsModal, tempDisplayName, isSidebarOpen, activeThread, timerDisplay, isGameStarted, isTimeLow, activeMilestone, lastXCardTime, isLoading, errorMsg, bottomMarker,
                 handleGameAction, sendMessage, triggerXCard, updateProfile, toggleTimerStart, switchThread, getPlayerColor, formatTime, saveConfig,
-                togglePause, isGamePaused, resetSession
+                togglePause, isGamePaused, resetSession,
+                showEmojiPicker, onEmojiClick
             };
         }
     }).mount('#app');
