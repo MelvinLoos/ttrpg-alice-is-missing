@@ -480,7 +480,12 @@
                 
                 // REGISTER SERVICE WORKER FOR PWA and listen for updates
                 if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('./sw.js')
+                    // Compute base path (directory) for the current location so the SW scope
+                    // is set to the app root (e.g. '/ttrpg-alice-is-missing/').
+                    const basePath = location.pathname.replace(/\/[^\/]*$/, '/') || '/';
+                    const swUrl = `${basePath}sw.js`;
+
+                    navigator.serviceWorker.register(swUrl, { scope: basePath })
                         .then((reg) => {
                             console.log('Service Worker Registered');
 
