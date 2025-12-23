@@ -485,6 +485,25 @@
                     const basePath = location.pathname.replace(/\/[^\/]*$/, '/') || '/';
                     const swUrl = `${basePath}sw.js`;
 
+                    // Unregister any previous service workers that are mis-scoped or point
+                    // at the wrong script (for example old workers living under `/assets/`).
+                    (async () => {
+                        try {
+                            const regs = await navigator.serviceWorker.getRegistrations();
+                            for (const r of regs) {
+                                // If registration scope is not a prefix of our basePath, or
+                                // if scriptURL doesn't match expected, unregister it.
+                                const isBadScope = !basePath.startsWith(new URL(r.scope).pathname) && !r.scope.startsWith(basePath);
+                                const isBadScript = !r.active || !r.active.scriptURL || !r.active.scriptURL.endsWith('/sw.js') || !r.active.scriptURL.includes(basePath);
+                                if (isBadScope || isBadScript) {
+                                    try { await r.unregister(); console.log('Unregistered old SW:', r.scope); } catch(e) { console.warn('Failed to unregister SW', r.scope, e); }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Error checking existing service workers', e);
+                        }
+                    })();
+
                     navigator.serviceWorker.register(swUrl, { scope: basePath })
                         .then((reg) => {
                             console.log('Service Worker Registered');
