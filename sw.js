@@ -18,6 +18,14 @@ self.addEventListener('install', (e) => {
   );
 });
 
+// Listen for messages from the page (e.g. SKIP_WAITING)
+self.addEventListener('message', (e) => {
+  if (!e.data) return;
+  if (e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 // Fetch Event: Serve from cache if available, else network
 self.addEventListener('fetch', (e) => {
   // Ignore Supabase API calls (let them go to network always)
