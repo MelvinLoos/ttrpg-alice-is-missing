@@ -7,6 +7,7 @@
     
     <!-- PWA & Mobile Meta Tags -->
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4f1.png">
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -371,6 +372,18 @@
                 </div>
             </div>
         </transition>
+
+        <!-- UPDATE AVAILABLE MODAL -->
+        <div v-if="updateAvailable" class="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl text-center space-y-4">
+                <h3 class="text-white font-bold text-lg">Update Available</h3>
+                <p class="text-slate-300 text-sm">A new version of the app is available. Reload to update now.</p>
+                <div class="flex gap-2">
+                    <button @click="applyUpdate" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded">Reload</button>
+                    <button @click="dismissUpdate" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded">Later</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -432,6 +445,9 @@
             const config = ref({ url: savedUrl, key: savedKey });
 
             const form = ref({ roomCode: '', character: '' }), currentUser = ref(null), currentRoom = ref(null), allPlayers = ref([]);
+            const updateAvailable = ref(false);
+            const updateWorker = { w: null };
+            let refreshing = false;
             const messages = ref([]); 
             const newMessage = ref(''), showSettingsModal = ref(false), tempDisplayName = ref(''), isSidebarOpen = ref(false), activeThread = ref({ id: null, name: 'Group Chat' });
             const activeMilestone = ref(null), alertedMilestones = ref(new Set()), lastXCardTime = ref(null), unreadCounts = ref({ group: 0 });
@@ -462,11 +478,37 @@
                 if (config.value.url && config.value.key) initSupabase(); 
                 document.addEventListener('click', () => AudioEngine.init(), { once: true });
                 
-                // REGISTER SERVICE WORKER FOR PWA
+                // REGISTER SERVICE WORKER FOR PWA and listen for updates
                 if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.register('./sw.js')
-                        .then(() => console.log('Service Worker Registered'))
+                        .then((reg) => {
+                            console.log('Service Worker Registered');
+
+                            // If there's an active waiting worker, a new version is available
+                            if (reg.waiting) {
+                                updateWorker.w = reg.waiting;
+                                updateAvailable.value = true;
+                            }
+
+                            // Listen for updates found (installing -> installed)
+                            reg.addEventListener('updatefound', () => {
+                                const newWorker = reg.installing;
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        updateWorker.w = newWorker;
+                                        updateAvailable.value = true;
+                                    }
+                                });
+                            });
+                        })
                         .catch(err => console.log('SW Registration Failed', err));
+
+                    // When the new SW takes control, reload so the user sees the new version
+                    navigator.serviceWorker.addEventListener('controllerchange', () => {
+                        if (refreshing) return;
+                        refreshing = true;
+                        window.location.reload();
+                    });
                 }
             });
 
@@ -506,6 +548,13 @@
 
             const saveConfig = () => { localStorage.setItem('alice_sb_url', config.value.url); localStorage.setItem('alice_sb_key', config.value.key); initSupabase(); };
             const getPlayerColor = (charName) => CHAR_COLORS[charName] || '#94a3b8';
+
+            const applyUpdate = () => {
+                if (!updateWorker.w) return;
+                updateWorker.w.postMessage({ type: 'SKIP_WAITING' });
+            };
+
+            const dismissUpdate = () => { updateAvailable.value = false; updateWorker.w = null; };
 
             const handleGameAction = async (action) => {
                 if(!form.value.roomCode || !form.value.character) return;
