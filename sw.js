@@ -6,16 +6,21 @@ const ASSETS = [
   './manifest.json'
 ];
 
-// Install Event: Cache core assets
+// Install Event: Cache core assets (add individually and ignore failures)
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
-      .catch((err) => {
-        // Prevent the install from failing due to external/CORS errors.
-        console.error('SW install: cache.addAll failed', err);
-      })
-  );
+  e.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    // Avoid trying to cache the directory entry './' which can 404 on some hosts
+    const toCache = ASSETS.filter(a => a !== './');
+    for (const asset of toCache) {
+      try {
+        await cache.add(asset);
+      } catch (err) {
+        // Log but don't fail the install if a single asset can't be cached
+        console.warn('SW install: failed to cache', asset, err);
+      }
+    }
+  })());
 });
 
 // Listen for messages from the page (e.g. SKIP_WAITING)
