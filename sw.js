@@ -1,20 +1,21 @@
 const CACHE_NAME = 'alice-missing-v1';
+// Precache only same-origin assets to avoid CORS issues when caching external CDNs.
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap',
-  'https://unpkg.com/vue@3/dist/vue.esm-browser.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm',
-  'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'
+  'src/styles.css'
 ];
 
 // Install Event: Cache core assets
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(ASSETS))
+      .catch((err) => {
+        // Prevent the install from failing due to external/CORS errors.
+        console.error('SW install: cache.addAll failed', err);
+      })
   );
 });
 
