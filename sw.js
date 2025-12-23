@@ -3,8 +3,7 @@ const CACHE_NAME = 'alice-missing-v1';
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json',
-  'src/styles.css'
+  './manifest.json'
 ];
 
 // Install Event: Cache core assets
