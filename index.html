@@ -384,6 +384,18 @@
                 </div>
             </div>
         </div>
+
+        <!-- SW MIGRATION NOTICE -->
+        <div v-if="showSWMigrationNotice" class="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl text-center space-y-4">
+                <h3 class="text-white font-bold text-lg">Update Installed</h3>
+                <p class="text-slate-300 text-sm">An old service worker was removed to fix the app scope. Reload now to finish migration.</p>
+                <div class="flex gap-2">
+                    <button @click="() => window.location.reload()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded">Reload</button>
+                    <button @click="showSWMigrationNotice = false" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded">Later</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -445,6 +457,7 @@
             const config = ref({ url: savedUrl, key: savedKey });
 
             const form = ref({ roomCode: '', character: '' }), currentUser = ref(null), currentRoom = ref(null), allPlayers = ref([]);
+            const showSWMigrationNotice = ref(false);
             const updateAvailable = ref(false);
             const updateWorker = { w: null };
             let refreshing = false;
@@ -490,14 +503,19 @@
                     (async () => {
                         try {
                             const regs = await navigator.serviceWorker.getRegistrations();
+                            let unregisteredAny = false;
                             for (const r of regs) {
                                 // If registration scope is not a prefix of our basePath, or
                                 // if scriptURL doesn't match expected, unregister it.
                                 const isBadScope = !basePath.startsWith(new URL(r.scope).pathname) && !r.scope.startsWith(basePath);
                                 const isBadScript = !r.active || !r.active.scriptURL || !r.active.scriptURL.endsWith('/sw.js') || !r.active.scriptURL.includes(basePath);
                                 if (isBadScope || isBadScript) {
-                                    try { await r.unregister(); console.log('Unregistered old SW:', r.scope); } catch(e) { console.warn('Failed to unregister SW', r.scope, e); }
+                                    try { await r.unregister(); console.log('Unregistered old SW:', r.scope); unregisteredAny = true; } catch(e) { console.warn('Failed to unregister SW', r.scope, e); }
                                 }
+                            }
+                            if (unregisteredAny) {
+                                // show a notice allowing the user to reload and get the new app
+                                showSWMigrationNotice.value = true;
                             }
                         } catch (e) {
                             console.warn('Error checking existing service workers', e);
